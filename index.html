@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Docking 3D">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="theme-color" content="#0a1c24">
+<title>Hafen Docking Sim 3D</title>
+<style>
+  :root{
+    --panel:#0a1c24; --panel2:#0f2731; --line:#1d4150;
+    --read:#74e6da; --read-dim:#3f8a86; --label:#7f99a4;
+    --warn:#ff5a4d; --ok:#4be08a; --amber:#ffc24b; --ink:#dff1f4;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#06141a;color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none;touch-action:none;}
+  button:focus-visible,.chip:focus-visible,input:focus-visible{outline:2px solid var(--read);outline-offset:2px;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  header{display:flex;align-items:stretch;gap:1px;background:var(--line);
+    padding-top:env(safe-area-inset-top);flex:0 0 auto;}
+  .hbox{background:var(--panel);padding:7px 10px;display:flex;flex-direction:column;justify-content:center;min-width:0;}
+  .hbox .lab{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--label);white-space:nowrap;}
+  .hbox .val{font-family:var(--mono);font-size:15px;color:var(--read);white-space:nowrap;line-height:1.1;}
+  #status{flex:1;}
+  #status .val{font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #status.ok .val{color:var(--ok);} #status.warn .val{color:var(--warn);} #status.amber .val{color:var(--amber);}
+  #gear,#snd{flex:0 0 auto;background:var(--panel);border:none;color:var(--read);font-size:20px;width:46px;cursor:pointer;}
+  #gear:active,#snd:active{background:var(--panel2);}
+  #snd.off{color:var(--label);}
+
+  #stage{position:relative;flex:1;min-height:0;overflow:hidden;}
+  canvas{display:block;}
+
+  #readouts{position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:5px;pointer-events:none;}
+  .gauge{background:rgba(8,22,28,.72);border:1px solid var(--line);border-radius:7px;
+    padding:5px 8px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);min-width:78px;}
+  .gauge .lab{font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--label);}
+  .gauge .val{font-family:var(--mono);font-size:17px;color:var(--read);line-height:1.05;}
+  .gauge .val small{font-size:10px;color:var(--read-dim);}
+
+  #windbadge{position:absolute;top:8px;right:8px;background:rgba(8,22,28,.72);
+    border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:flex;align-items:center;gap:8px;
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);pointer-events:none;}
+  #windbadge .arrow{width:30px;height:30px;}
+  #windbadge .txt .lab{font-size:8.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--label);}
+  #windbadge .txt .val{font-family:var(--mono);font-size:15px;color:var(--ink);line-height:1.1;}
+  #windbadge.shelter .val{color:var(--read-dim);}
+
+  #viewbtn{position:absolute;top:64px;right:8px;background:rgba(8,22,28,.8);
+    border:1px solid var(--line);color:var(--read);border-radius:9px;
+    padding:9px 12px;font-size:13px;cursor:pointer;min-height:44px;}
+  #viewbtn:active{background:var(--panel2);}
+
+  .ctl{position:absolute;touch-action:none;user-select:none;-webkit-user-select:none;}
+  .throttle{bottom:74px;width:62px;height:42%;max-height:270px;border-radius:14px;
+    background:linear-gradient(180deg,rgba(12,30,38,.9),rgba(8,22,28,.92));
+    border:1px solid var(--line);overflow:hidden;}
+  .throttle.left{left:10px;} .throttle.right{right:10px;}
+  .throttle .center-line{position:absolute;left:6px;right:6px;top:50%;height:1px;background:var(--line);}
+  .throttle .fill{position:absolute;left:4px;right:4px;border-radius:9px;background:var(--read-dim);opacity:.35;}
+  .throttle .knob{position:absolute;left:5px;right:5px;height:44px;border-radius:9px;
+    background:linear-gradient(180deg,#2a5a63,#163842);border:1px solid #3f8a86;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;}
+  .throttle .knob::before{content:"";width:24px;height:3px;border-radius:2px;background:var(--read);opacity:.8;}
+  .throttle .tlab{position:absolute;left:0;right:0;text-align:center;font-size:8px;letter-spacing:.1em;
+    color:var(--label);text-transform:uppercase;}
+  .throttle .tlab.t{top:4px;} .throttle .tlab.b{bottom:4px;}
+  .throttle .pct{position:absolute;left:0;right:0;bottom:50%;text-align:center;font-family:var(--mono);
+    font-size:12px;color:var(--read);pointer-events:none;transform:translateY(50%);text-shadow:0 1px 3px #000;}
+  .throttle .name{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-90deg);
+    font-size:9px;letter-spacing:.2em;color:var(--label);text-transform:uppercase;white-space:nowrap;opacity:.5;}
+
+  #wheelbox{bottom:8px;left:50%;transform:translateX(-50%);width:156px;height:156px;}
+  #wheel{width:156px;height:156px;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));}
+  #wheelbox .deg{position:absolute;top:-15px;left:0;right:0;text-align:center;font-family:var(--mono);
+    font-size:12px;color:var(--read);text-shadow:0 1px 3px #000;pointer-events:none;}
+
+  .bow{bottom:74px;right:10px;display:flex;flex-direction:column;gap:8px;}
+  .bow .bt{width:62px;height:54px;border-radius:12px;background:rgba(12,30,38,.9);
+    border:1px solid var(--line);color:var(--read);font-size:22px;display:flex;align-items:center;
+    justify-content:center;cursor:pointer;}
+  .bow .bt:active,.bow .bt.on{background:#1d4a55;color:#fff;border-color:#3f8a86;}
+  .bow .blab{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:8px;
+    letter-spacing:.14em;color:var(--label);text-transform:uppercase;}
+
+  #linepill{position:absolute;bottom:180px;left:50%;transform:translateX(-50%);display:none;gap:8px;z-index:5;}
+  #stage.cat #linepill{bottom:74px;}
+  #linepill button{background:rgba(12,30,38,.94);border:1px solid var(--read-dim);color:var(--ink);
+    border-radius:22px;padding:11px 16px;font-size:13px;cursor:pointer;min-height:44px;}
+  #linepill button:active{background:#1d4a55;}
+  #lp-drop{border-color:var(--warn);color:#ffb3ad;}
+
+  #resetbtn{position:absolute;top:118px;right:8px;
+    background:rgba(8,22,28,.8);border:1px solid var(--line);color:var(--label);
+    border-radius:20px;padding:9px 14px;font-size:12px;letter-spacing:.08em;cursor:pointer;
+    text-transform:uppercase;min-height:40px;}
+
+  #settings{position:absolute;inset:0;background:rgba(4,12,16,.86);backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);z-index:30;display:none;flex-direction:column;
+    padding:calc(env(safe-area-inset-top) + 12px) 16px 24px;overflow-y:auto;touch-action:pan-y;}
+  #settings.open{display:flex;}
+  #settings h1{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--read);
+    margin:0 0 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
+  #settings .close{background:none;border:1px solid var(--line);color:var(--ink);border-radius:8px;
+    padding:8px 14px;font-size:13px;cursor:pointer;}
+  .sgroup{margin-bottom:18px;}
+  .sgroup .gl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--label);margin-bottom:8px;}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:9px;
+    padding:9px 13px;font-size:13px;cursor:pointer;flex:0 0 auto;}
+  .chip small{display:block;font-size:9.5px;color:var(--label);margin-top:2px;}
+  .chip.sel{background:#15414c;border-color:var(--read);color:#fff;}
+  .chip.sel small{color:var(--read);}
+  .srow{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
+  .srow label{font-size:12px;color:var(--label);width:84px;flex:0 0 auto;}
+  .srow input[type=range]{flex:1;accent-color:var(--read);min-height:30px;}
+  .srow .rv{font-family:var(--mono);font-size:13px;color:var(--read);width:64px;text-align:right;}
+  .winddial{display:flex;align-items:center;gap:16px;}
+  #dialpad{width:104px;height:104px;flex:0 0 auto;touch-action:none;cursor:pointer;}
+  .toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;color:var(--ink);min-height:32px;}
+  .toggle .sw{width:42px;height:24px;border-radius:13px;background:var(--panel2);border:1px solid var(--line);position:relative;transition:.15s;}
+  .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--label);transition:.15s;}
+  .toggle.on .sw{background:#15414c;border-color:var(--read);}
+  .toggle.on .sw::after{left:21px;background:var(--read);}
+  .startbtn{margin-top:6px;width:100%;background:#15414c;border:1px solid var(--read);color:#fff;
+    border-radius:11px;padding:14px;font-size:15px;cursor:pointer;font-weight:600;}
+  .hint{font-size:11px;color:var(--label);line-height:1.55;margin-top:4px;}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:#06141a;color:var(--label);font-size:13px;letter-spacing:.1em;z-index:40;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hbox" id="status"><div class="lab">Lage</div><div class="val">Bereit</div></div>
+    <div class="hbox"><div class="lab">SOG</div><div class="val" id="r-sog">0.0<small> kn</small></div></div>
+    <div class="hbox"><div class="lab">Kurs</div><div class="val" id="r-hdg">000°</div></div>
+    <button id="snd" class="off" aria-label="Ton">🔇</button>
+    <button id="gear" aria-label="Einstellungen">⚙</button>
+  </header>
+
+  <div id="stage">
+    <div id="loading">LADE 3D …</div>
+
+    <div id="readouts">
+      <div class="gauge"><div class="lab">Drehrate</div><div class="val" id="r-rot">0.0<small> °/s</small></div></div>
+      <div class="gauge"><div class="lab">Drift</div><div class="val" id="r-drift">0.0<small> kn</small></div></div>
+    </div>
+
+    <div id="windbadge">
+      <svg class="arrow" viewBox="0 0 30 30">
+        <g id="wind-g"><path d="M15 4 L20 16 L15 13 L10 16 Z" fill="#74e6da"/><line x1="15" y1="13" x2="15" y2="26" stroke="#74e6da" stroke-width="2"/></g>
+      </svg>
+      <div class="txt"><div class="lab">Wind</div><div class="val" id="r-wind">0 kn</div></div>
+    </div>
+
+    <button id="viewbtn">⬒ Draufsicht</button>
+    <button id="resetbtn">↻ Reset</button>
+    <div id="linepill">
+      <button id="lp-winch">⟲ Holen (halten)</button>
+      <button id="lp-drop">✕ Loswerfen</button>
+    </div>
+
+    <div class="ctl throttle left" id="thr-left">
+      <div class="center-line"></div><div class="fill" id="fill-l"></div>
+      <div class="knob" id="knob-l"></div>
+      <div class="tlab t">Voraus</div><div class="tlab b">Zurück</div>
+      <div class="pct" id="pct-l">0</div><div class="name" id="thrname-l">Maschine</div>
+    </div>
+    <div class="ctl throttle right" id="thr-right" style="display:none">
+      <div class="center-line"></div><div class="fill" id="fill-r"></div>
+      <div class="knob" id="knob-r"></div>
+      <div class="tlab t">Voraus</div><div class="tlab b">Zurück</div>
+      <div class="pct" id="pct-r">0</div><div class="name">Stb</div>
+    </div>
+    <div class="ctl" id="wheelbox">
+      <div class="deg" id="rud-deg">0°</div>
+      <svg id="wheel" viewBox="0 0 120 120">
+        <g id="wheel-g">
+          <circle cx="60" cy="60" r="50" fill="rgba(10,28,36,.55)" stroke="#3f8a86" stroke-width="9"/>
+          <circle cx="60" cy="60" r="56" fill="none" stroke="#1d4150" stroke-width="1.5"/>
+          <line x1="60" y1="12" x2="60" y2="108" stroke="#2a5a63" stroke-width="5"/>
+          <line x1="18.4" y1="36" x2="101.6" y2="84" stroke="#2a5a63" stroke-width="5"/>
+          <line x1="18.4" y1="84" x2="101.6" y2="36" stroke="#2a5a63" stroke-width="5"/>
+          <circle cx="60" cy="60" r="11" fill="#163842" stroke="#3f8a86" stroke-width="2"/>
+          <circle cx="60" cy="11" r="5" fill="#e0317f"/>
+        </g>
+      </svg>
+    </div>
+    <div class="ctl bow" id="bow" style="display:none">
+      <div class="blab">Bugstrahl</div>
+      <div class="bt" id="bow-l">◄</div><div class="bt" id="bow-r">►</div>
+    </div>
+  </div>
+</div>
+
+<div id="settings">
+  <h1>Einstellungen <button class="close" id="s-close">Schließen</button></h1>
+  <div class="sgroup">
+    <div class="gl">Boot</div>
+    <div class="chips" id="boatchips">
+      <div class="chip" data-boat="sail">Segelboot<small>Einschraube · Prop Walk</small></div>
+      <div class="chip" data-boat="cat">Katamaran<small>Zwei Maschinen</small></div>
+      <div class="chip" data-boat="sport">Sportboot<small>Gleiter · direkt</small></div>
+      <div class="chip" data-boat="yacht">Kleine Yacht<small>Bugstrahlruder</small></div>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="gl">Hafen &amp; Manöver</div>
+    <div class="chips" id="scenchips">
+      <div class="chip" data-scen="alongside">Offener Steg<small>längsseits</small></div>
+      <div class="chip" data-scen="gap">Lücke<small>zwischen zwei Booten</small></div>
+      <div class="chip" data-scen="box">Box mit Dalben<small>rückwärts, Heck zum Steg</small></div>
+      <div class="chip" data-scen="marina">Marina-Gasse<small>Fingerpontons</small></div>
+      <div class="chip" data-scen="tight">Enger Hafen<small>Seitenwind + Strömung</small></div>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="gl">Wind</div>
+    <div class="winddial">
+      <canvas id="dialpad" width="104" height="104"></canvas>
+      <div style="flex:1">
+        <div class="srow"><label>Stärke</label>
+          <input type="range" id="windspeed" min="0" max="14" step="0.5" value="6">
+          <div class="rv" id="windspeed-v">6.0 m/s</div></div>
+        <div class="srow"><label>Richtung</label>
+          <input type="range" id="winddir" min="0" max="359" step="1" value="90">
+          <div class="rv" id="winddir-v">90°</div></div>
+        <label class="toggle" id="shelter"><span class="sw"></span><span>Windgeschützt (Lee)</span></label>
+        <div class="hint">Wind kommt <b>aus</b> der Pfeilrichtung.</div>
+      </div>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="gl">Strömung</div>
+    <label class="toggle" id="curtoggle"><span class="sw"></span><span>Strömung aktiv</span></label>
+    <div class="srow" style="margin-top:8px"><label>Stärke</label>
+      <input type="range" id="curspeed" min="0" max="1.5" step="0.05" value="0.6">
+      <div class="rv" id="curspeed-v">0.60 m/s</div></div>
+    <div class="srow"><label>setzt nach</label>
+      <input type="range" id="curdir" min="0" max="359" step="1" value="0">
+      <div class="rv" id="curdir-v">0° (N)</div></div>
+  </div>
+  <button class="startbtn" id="s-start">Manöver starten</button>
+  <div class="hint" style="margin-top:14px">
+    <b>Kamera:</b> Mit einem Finger übers Wasser wischen = umsehen, zwei Finger = zoomen,
+    „Draufsicht" wechselt die Perspektive. Kurz tippen wählt Klampen/Poller/Leinen.<br>
+    <b>Leinen:</b> Klampe am Boot antippen, dann Poller/Dalbe antippen → Leine liegt.
+    Leine antippen → „Holen" (dichtholen, halten) oder „Loswerfen". Festgemacht erst mit Vor- <i>und</i> Achterleine.<br>
+    <b>Steuern:</b> Gashebel und Steuerrad halten ihre Stellung. Rad drehen = Ruderlage, Doppeltipp aufs Rad = mittschiffs.
+    Die Maschine braucht einen Moment, bis der Schub anliegt. Desktop: ↑/↓ Gas · ←/→ Ruder ·
+    W/S Stb-Maschine · Q/E Bugstrahl · Leertaste neutral · R Reset.
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+(function(){
+if(!window.THREE){document.getElementById('loading').textContent='3D-Bibliothek konnte nicht geladen werden – Internet nötig für den ersten Start.';return;}
+const RHO_AIR=1.225, WIND_GAIN=1.7, KN=1.94384;
+const LINE_K=4500, LINE_C=6500, LINE_CAP=22000, LINE_BREAK=20000, LINE_MAXLEN=14;
+
+const BOATS={
+  sail:{name:'Segelboot',L:10,B:3.2,mU:6500,mV:13000,Iz:70000,maxThrust:4200,maxThrustRev:2600,
+    twin:false,bowThruster:false,bowForce:0,walkFwd:0.006,walkRev:0.10,
+    kRud:1100,washSpeed:2.2,kWash:1.0,Lr:4.5,dragU:340,dragV:1300,dragR:52000,
+    Alat:16,Afront:4.2,CdL:1.1,CdF:0.9,xW:1.3,color:0xece2cb,deck:0x22343c},
+  cat:{name:'Katamaran',L:11,B:6.0,mU:7000,mV:9500,Iz:95000,maxThrust:3600,maxThrustRev:3000,
+    twin:true,bowThruster:false,bowForce:0,walkFwd:0,walkRev:0,
+    kRud:0,washSpeed:0,kWash:0,Lr:4.0,dragU:360,dragV:950,dragR:60000,
+    Alat:20,Afront:9,CdL:1.2,CdF:1.0,xW:0.4,color:0xdfe7e2,deck:0x2a3a3a},
+  sport:{name:'Sportboot',L:7.5,B:2.6,mU:2600,mV:5200,Iz:18000,maxThrust:5200,maxThrustRev:2400,
+    twin:false,bowThruster:false,bowForce:0,walkFwd:0.008,walkRev:0.07,
+    kRud:1500,washSpeed:3.0,kWash:1.2,Lr:3.2,dragU:200,dragV:750,dragR:14000,
+    Alat:7,Afront:3,CdL:0.9,CdF:0.8,xW:0.6,color:0xe9ddc8,deck:0x27343a},
+  yacht:{name:'Kleine Yacht',L:13,B:4.2,mU:12000,mV:21000,Iz:180000,maxThrust:6000,maxThrustRev:3800,
+    twin:false,bowThruster:true,bowForce:2600,walkFwd:0.008,walkRev:0.08,
+    kRud:1700,washSpeed:2.2,kWash:1.0,Lr:5.8,dragU:520,dragV:2100,dragR:140000,
+    Alat:26,Afront:7,CdL:1.1,CdF:0.9,xW:1.2,color:0xf0e8d6,deck:0x1d2c33},
+};
+
+const WORLD={W:34,H:52};
+const cfg={boat:'sail',scen:'alongside',windSpeed:6,windDir:90,shelter:false,
+  curOn:false,curSpeed:0.6,curDir:0};
+
+let P=BOATS[cfg.boat];
+let s={x:0,y:0,psi:0,u:0,v:0,r:0};
+let ctrl={thrL:0,thrR:0,rudder:0,bow:0};
+let eng={l:0,r:0};
+let scene2={obstacles:[],berth:null,start:null,bollards:[]};
+let cleats=[], lines=[];
+let selCleat=-1, selLine=-1, winching=false;
+let docked=false, impactCool=0;
+let gust=0, gustTarget=0, gustT=0;
+
+// ================= PHYSIK (identisch zur 2D-Version) =================
+function buildScene(){
+  const W=WORLD.W,H=WORLD.H,pierW=3.5,wall=pierW;
+  const obs=[{x:pierW/2,y:H/2,w:pierW,h:H,type:'pier'}];
+  const bol=[]; let berth=null,start=null;
+  const edgeBol=(yc,ys)=>{for(const dy of ys)bol.push({x:wall-0.55,y:yc+dy});};
+  if(cfg.scen==='alongside'){
+    const yc=H*0.42;
+    berth={x:wall,y:yc,hw:P.B/2+0.55,hl:P.L/2+1,psi:-Math.PI/2};
+    edgeBol(yc,[-P.L*0.55,-P.L*0.25,0,P.L*0.25,P.L*0.55]);
+    start={x:W*0.62,y:H*0.68,psi:-Math.PI/2};
+  } else if(cfg.scen==='gap'){
+    const yc=H*0.42, gap=P.L+3.2, ml=P.L+0.5;
+    obs.push({x:wall+(P.B+0.6)/2,y:yc-gap/2-ml/2,w:P.B+0.6,h:ml,type:'moored'});
+    obs.push({x:wall+(P.B+0.6)/2,y:yc+gap/2+ml/2,w:P.B+0.6,h:ml,type:'moored'});
+    berth={x:wall,y:yc,hw:P.B/2+0.45,hl:P.L/2+0.7,psi:-Math.PI/2};
+    edgeBol(yc,[-P.L*0.42,-P.L*0.2,0,P.L*0.2,P.L*0.42]);
+    start={x:W*0.6,y:H*0.7,psi:-Math.PI/2};
+  } else if(cfg.scen==='box'){
+    const yc=H*0.44, slip=P.B+1.9;
+    const piles=[
+      {x:wall+P.L*0.5, y:yc-slip/2-0.6},{x:wall+P.L*0.5, y:yc+slip/2+0.6},
+      {x:wall+P.L*1.06,y:yc-slip/2-0.6},{x:wall+P.L*1.06,y:yc+slip/2+0.6},
+    ];
+    for(const p of piles){obs.push({x:p.x,y:p.y,w:0.9,h:0.9,type:'pile'});bol.push({x:p.x,y:p.y});}
+    bol.push({x:wall-0.55,y:yc-1.8},{x:wall-0.55,y:yc+1.8});
+    berth={x:wall+P.L/2+0.5,y:yc,hw:P.B/2+0.55,hl:P.L/2+1,psi:0};
+    start={x:W*0.72,y:H*0.66,psi:Math.PI*0.75};
+  } else if(cfg.scen==='marina'){
+    const fl=P.L*0.95, fw=1.1, fys=[9,22,35,48];
+    for(const fy of fys) obs.push({x:wall+fl/2,y:fy,w:fl,h:fw,type:'finger'});
+    for(const fy of [9,22,48]) obs.push({x:wall+4.8,y:fy-fw/2-1.7,w:9,h:3,type:'mooredH'});
+    const fy=35;
+    berth={x:wall+P.L/2+0.3,y:fy-fw/2-P.B/2-0.5,hw:P.B/2+0.5,hl:P.L/2+1,psi:0};
+    bol.push({x:wall+1.2,y:fy-fw/2},{x:wall+fl*0.55,y:fy-fw/2},{x:wall+fl-0.5,y:fy-fw/2},{x:wall-0.55,y:fy-3.5});
+    start={x:W*0.68,y:H*0.86,psi:-Math.PI/2};
+  } else {
+    obs.push({x:W-1.75,y:H/2,w:3.5,h:H,type:'pier'});
+    const yc=H*0.42, gap=P.L+2.6, ml=P.L+0.5;
+    obs.push({x:wall+(P.B+0.6)/2,y:yc-gap/2-ml/2,w:P.B+0.6,h:ml,type:'moored'});
+    obs.push({x:wall+(P.B+0.6)/2,y:yc+gap/2+ml/2,w:P.B+0.6,h:ml,type:'moored'});
+    berth={x:wall,y:yc,hw:P.B/2+0.45,hl:P.L/2+0.6,psi:-Math.PI/2};
+    edgeBol(yc,[-P.L*0.38,-P.L*0.18,0,P.L*0.18,P.L*0.38]);
+    start={x:W*0.52,y:H*0.78,psi:-Math.PI/2};
+  }
+  scene2={obstacles:obs,berth,start,bollards:bol};
+}
+function R2(o){return {l:o.x-o.w/2,t:o.y-o.h/2,r:o.x+o.w/2,b:o.y+o.h/2};}
+function makeCleats(){
+  cleats=[
+    {n:'Bugklampe', x:P.L/2*0.82, y:0},
+    {n:'Heckklampe', x:-P.L/2*0.88, y:0},
+    {n:'Klampe Bb', x:0, y:-P.B/2*0.85},
+    {n:'Klampe Stb', x:0, y:P.B/2*0.85},
+  ];
+}
+function cleatWorld(i){
+  const c=Math.cos(s.psi),si=Math.sin(s.psi),cl=cleats[i];
+  return [s.x+cl.x*c-cl.y*si, s.y+cl.x*si+cl.y*c];
+}
+function currentVec(){
+  if(!cfg.curOn) return [0,0];
+  const a=(cfg.curDir-90)*Math.PI/180;
+  return [Math.cos(a)*cfg.curSpeed, Math.sin(a)*cfg.curSpeed];
+}
+function physics(dt){
+  const fwd=[Math.cos(s.psi),Math.sin(s.psi)], stb=[-Math.sin(s.psi),Math.cos(s.psi)];
+  const k=Math.min(1,dt/0.35);
+  eng.l+=(ctrl.thrL-eng.l)*k; eng.r+=(ctrl.thrR-eng.r)*k;
+  const tToN=t=> t>=0? t*P.maxThrust : t*P.maxThrustRev;
+  let thrustL,thrustR;
+  if(P.twin){thrustL=tToN(eng.l);thrustR=tToN(eng.r);}
+  else{thrustL=thrustR=tToN(eng.l)*0.5;}
+  const thrust=thrustL+thrustR;
+  const cur=currentVec();
+  const cu=cur[0]*fwd[0]+cur[1]*fwd[1], cvb=cur[0]*stb[0]+cur[1]*stb[1];
+  const ur=s.u-cu, vr=s.v-cvb;
+  let Yr=0,Nr=0;
+  if(P.kRud>0){
+    const wash=P.kWash*Math.max(thrust,0)/P.maxThrust*P.washSpeed;
+    const inflow=ur+wash;
+    const Frud=-P.kRud*Math.sin(ctrl.rudder*0.6)*inflow*Math.abs(inflow)*0.02;
+    Yr=Frud; Nr=-P.Lr*Frud;
+  }
+  const walk=thrust>=0?P.walkFwd:P.walkRev;
+  const Ypw=walk*thrust, Npw=-P.Lr*Ypw;
+  let Ybt=0,Nbt=0;
+  if(P.bowThruster){Ybt=P.bowForce*ctrl.bow; Nbt=(P.L*0.42)*Ybt;}
+  let Neng=0; if(P.twin) Neng=(P.B*0.5)*(thrustL-thrustR);
+  let ws=cfg.windSpeed*(1+gust); if(cfg.shelter) ws*=0.35;
+  const windTo=cfg.windDir*Math.PI/180+Math.PI;
+  const wW=[Math.cos(windTo)*ws,Math.sin(windTo)*ws];
+  const velW=[s.u*fwd[0]+s.v*stb[0], s.u*fwd[1]+s.v*stb[1]];
+  const awx=(wW[0]-velW[0])*fwd[0]+(wW[1]-velW[1])*fwd[1];
+  const awy=(wW[0]-velW[0])*stb[0]+(wW[1]-velW[1])*stb[1];
+  const Xw=0.5*RHO_AIR*P.CdF*P.Afront*awx*Math.abs(awx)*WIND_GAIN;
+  const Yw=0.5*RHO_AIR*P.CdL*P.Alat*awy*Math.abs(awy)*WIND_GAIN;
+  const Nw=P.xW*Yw;
+  const Xd=-P.dragU*ur*Math.abs(ur)-P.dragU*0.75*ur;
+  const Yd=-P.dragV*vr*Math.abs(vr)-P.dragV*1.2*vr;
+  const Nd=-P.dragR*s.r*Math.abs(s.r)-P.dragR*0.3*s.r;
+  let X=thrust+Xd+Xw, Y=Yr+Ypw+Ybt+Yd+Yw, N=Nr+Npw+Nbt+Neng+Nd+Nw;
+  if(winching&&selLine>=0&&lines[selLine]) lines[selLine].restLen=Math.max(1.2,lines[selLine].restLen-0.7*dt);
+  let broke=-1;
+  for(let i=0;i<lines.length;i++){
+    const L=lines[i], cl=cleats[L.cleat];
+    const c=Math.cos(s.psi),si=Math.sin(s.psi);
+    const rxW=cl.x*c-cl.y*si, ryW=cl.x*si+cl.y*c;
+    const px=s.x+rxW, py=s.y+ryW;
+    const dx=L.bx-px, dy=L.by-py;
+    const len=Math.hypot(dx,dy); L.len=len;
+    if(len<=L.restLen||len<1e-6){L.T=0;continue;}
+    const hx=dx/len,hy=dy/len;
+    const vpx=velW[0]-s.r*ryW, vpy=velW[1]+s.r*rxW;
+    const extRate=-(vpx*hx+vpy*hy);
+    let F=LINE_K*(len-L.restLen)+LINE_C*extRate;
+    if(F>LINE_BREAK){broke=i; L.T=F; continue;}
+    F=Math.max(0,Math.min(LINE_CAP,F)); L.T=F;
+    const Fx=hx*F,Fy=hy*F;
+    const Fu=Fx*fwd[0]+Fy*fwd[1], Fv=Fx*stb[0]+Fy*stb[1];
+    X+=Fu; Y+=Fv; N+=cl.x*Fv-cl.y*Fu;
+  }
+  if(broke>=0){
+    lines.splice(broke,1); rebuildLineMeshes();
+    if(selLine===broke){selLine=-1;winching=false;updatePill();}
+    else if(selLine>broke) selLine--;
+    sfx.snap();
+    setStatus('⚠ Leine gebrochen! Zu harter Ruck.','warn');
+    if(docked) checkDockLatch();
+  }
+  s.u+=(X/P.mU+s.v*s.r)*dt; s.v+=(Y/P.mV-s.u*s.r)*dt; s.r+=(N/P.Iz)*dt;
+  s.psi+=s.r*dt;
+  const nf=[Math.cos(s.psi),Math.sin(s.psi)],ns2=[-Math.sin(s.psi),Math.cos(s.psi)];
+  s.x+=(s.u*nf[0]+s.v*ns2[0])*dt; s.y+=(s.u*nf[1]+s.v*ns2[1])*dt;
+  collide();
+  s.x=Math.max(1,Math.min(WORLD.W-1,s.x)); s.y=Math.max(1,Math.min(WORLD.H-1,s.y));
+}
+function hullPoints(){
+  const hl=P.L/2,hw=P.B/2,c=Math.cos(s.psi),si=Math.sin(s.psi);
+  const local=[[hl,0],[hl*0.7,hw],[0,hw],[-hl,hw],[-hl,0],[-hl,-hw],[0,-hw],[hl*0.7,-hw]];
+  return local.map(p=>[s.x+p[0]*c-p[1]*si, s.y+p[0]*si+p[1]*c]);
+}
+function collide(){
+  if(impactCool>0) impactCool-=1/120;
+  for(const o of scene2.obstacles){
+    const R=R2(o);
+    for(const p of hullPoints()){
+      if(p[0]>R.l&&p[0]<R.r&&p[1]>R.t&&p[1]<R.b){
+        const dl=p[0]-R.l,dr=R.r-p[0],dt2=p[1]-R.t,db=R.b-p[1];
+        const m=Math.min(dl,dr,dt2,db);
+        let nx=0,ny=0;
+        if(m===dl)nx=-1;else if(m===dr)nx=1;else if(m===dt2)ny=-1;else ny=1;
+        s.x+=nx*m; s.y+=ny*m;
+        const fwd=[Math.cos(s.psi),Math.sin(s.psi)],stb=[-Math.sin(s.psi),Math.cos(s.psi)];
+        const vw=[s.u*fwd[0]+s.v*stb[0], s.u*fwd[1]+s.v*stb[1]];
+        const vn=vw[0]*nx+vw[1]*ny;
+        if(vn<0){
+          const spd=Math.abs(vn);
+          if(spd>0.6&&impactCool<=0){impactCool=0.9;
+            sfx.impact(spd);
+            setStatus('Rumms! Aufprall '+(spd*KN).toFixed(1)+' kn – sanfter!','warn');}
+          const tvx=vw[0]-vn*nx, tvy=vw[1]-vn*ny;
+          s.u=tvx*fwd[0]+tvy*fwd[1]; s.v=tvx*stb[0]+tvy*stb[1];
+          s.r*=0.7;
+        }
+        return;
+      }
+    }
+  }
+}
+function hasLine(ci){return lines.some(l=>l.cleat===ci);}
+function checkDockLatch(){
+  if(docked && !(hasLine(0)&&hasLine(1))){
+    docked=false; setStatus('Leine fehlt – nicht mehr fest!','amber');
+  }
+}
+function checkDock(){
+  checkDockLatch();
+  if(docked) return;
+  const b=scene2.berth;
+  const dx=s.x-b.x, dy=s.y-b.y;
+  const c=Math.cos(b.psi),si=Math.sin(b.psi);
+  const fx=dx*c+dy*si, fy=-dx*si+dy*c;
+  const inZone=Math.abs(fx)<b.hl&&Math.abs(fy)<b.hw;
+  let he=((s.psi-b.psi+Math.PI*3)%(Math.PI*2))-Math.PI;
+  if(Math.abs(he)>Math.PI/2) he=((s.psi-(b.psi+Math.PI)+Math.PI*3)%(Math.PI*2))-Math.PI;
+  const spd=Math.hypot(s.u,s.v);
+  const aligned=Math.abs(he)<0.26&&Math.abs(s.r)<0.08;
+  const moored=hasLine(0)&&hasLine(1);
+  if(impactCool>0) return;
+  if(inZone&&spd<0.45&&aligned&&moored){
+    docked=true; sfx.dock(); setStatus('✓ Festgemacht! Sauber angelegt.','ok');
+  } else if(inZone&&spd<0.45&&aligned){
+    setStatus('Position gut – Vor- und Achterleine belegen','amber');
+  } else if(inZone&&spd>=0.45){
+    setStatus('Im Liegeplatz – langsamer werden','amber');
+  } else if(inZone){
+    setStatus('Im Liegeplatz – parallel ausrichten','amber');
+  }
+}
+
+// ================= 3D =================
+const stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+stage.insertBefore(renderer.domElement,stage.firstChild);
+renderer.domElement.style.position='absolute';
+renderer.domElement.style.inset='0';
+renderer.domElement.style.touchAction='none';
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xb9d4dd);
+scene.fog=new THREE.Fog(0xb9d4dd,45,150);
+const camera=new THREE.PerspectiveCamera(55,1,0.1,400);
+scene.add(new THREE.HemisphereLight(0xdff1f4,0x0a2735,0.95));
+const sun=new THREE.DirectionalLight(0xfff2d9,0.85);
+sun.position.set(30,60,-25); scene.add(sun);
+
+function resize(){
+  const w=stage.clientWidth,h=stage.clientHeight;
+  renderer.setSize(w,h);
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize',resize);
+
+// Wasser (animierte Fläche)
+const waterGeo=new THREE.PlaneGeometry(240,240,56,56);
+waterGeo.rotateX(-Math.PI/2);
+function makeWaterTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=256;
+  const x=c.getContext('2d');
+  x.fillStyle='#14495e'; x.fillRect(0,0,256,256);
+  // weiche Wellenkämme
+  for(let i=0;i<38;i++){
+    const y0=Math.random()*256, amp=2+Math.random()*4, len=40+Math.random()*80;
+    const x0=Math.random()*256;
+    x.strokeStyle='rgba(120,190,205,'+(0.05+Math.random()*0.09)+')';
+    x.lineWidth=1+Math.random()*1.5;
+    x.beginPath();
+    for(let t=0;t<=len;t+=4){
+      const px=(x0+t)%256, py=y0+Math.sin(t*0.15)*amp;
+      t===0?x.moveTo(px,py):x.lineTo(px,py);
+    }
+    x.stroke();
+  }
+  // dunkle Täler
+  for(let i=0;i<26;i++){
+    const y0=Math.random()*256, x0=Math.random()*256, len=30+Math.random()*60;
+    x.strokeStyle='rgba(6,25,34,'+(0.10+Math.random()*0.12)+')';
+    x.lineWidth=2+Math.random()*2;
+    x.beginPath(); x.moveTo(x0,y0); x.lineTo((x0+len)%256,y0+Math.sin(x0)*3); x.stroke();
+  }
+  // Glitzerpunkte
+  for(let i=0;i<220;i++){
+    x.fillStyle='rgba(190,235,240,'+(0.05+Math.random()*0.12)+')';
+    x.fillRect(Math.random()*256,Math.random()*256,1.4,1.4);
+  }
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(22,22);
+  return tex;
+}
+const waterTex=makeWaterTexture();
+const waterMat=new THREE.MeshPhongMaterial({color:0xffffff,map:waterTex,shininess:80,specular:0x335a66,transparent:true,opacity:0.96});
+const water=new THREE.Mesh(waterGeo,waterMat);
+water.position.set(WORLD.W/2,0,WORLD.H/2);
+scene.add(water);
+const wPos=waterGeo.attributes.position, wCount=wPos.count;
+const wBase=new Float32Array(wCount*2);
+for(let i=0;i<wCount;i++){wBase[i*2]=wPos.getX(i);wBase[i*2+1]=wPos.getZ(i);}
+function animateWater(t){
+  waterTex.offset.x=Math.sin(t*0.05)*0.01; waterTex.offset.y=t*0.0012;
+  for(let i=0;i<wCount;i++){
+    const x=wBase[i*2],z=wBase[i*2+1];
+    wPos.setY(i,Math.sin(x*0.35+t*1.1)*0.07+Math.cos(z*0.3+t*0.8)*0.07);
+  }
+  wPos.needsUpdate=true;
+}
+
+// Materialien
+const mWood=new THREE.MeshLambertMaterial({color:0x8a6a43});
+const mWoodDark=new THREE.MeshLambertMaterial({color:0x5e4528});
+const mPile=new THREE.MeshLambertMaterial({color:0x4a3722});
+const mMoored=new THREE.MeshLambertMaterial({color:0x5d7682});
+const mMooredDeck=new THREE.MeshLambertMaterial({color:0x40525c});
+const mBollard=new THREE.MeshLambertMaterial({color:0x2a1f12});
+
+function makeFoamTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,2,32,32,30);
+  g.addColorStop(0,'rgba(235,250,252,0.85)');
+  g.addColorStop(0.55,'rgba(210,240,245,0.35)');
+  g.addColorStop(1,'rgba(210,240,245,0)');
+  x.fillStyle=g; x.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+const foamTex=makeFoamTexture();
+const FOAM_N=44, foamPool=[];
+let foamIdx=0, foamTimer=0;
+function initFoam(){
+  const geo=new THREE.PlaneGeometry(1,1);
+  for(let i=0;i<FOAM_N;i++){
+    const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:foamTex,transparent:true,opacity:0,depthWrite:false}));
+    m.rotation.x=-Math.PI/2; m.position.y=0.06; m.visible=false;
+    m.userData={age:0,life:1};
+    scene.add(m); foamPool.push(m);
+  }
+}
+function spawnFoam(x,z,size){
+  const m=foamPool[foamIdx]; foamIdx=(foamIdx+1)%FOAM_N;
+  m.position.x=x+(Math.random()-0.5)*0.5;
+  m.position.z=z+(Math.random()-0.5)*0.5;
+  m.scale.setScalar(size);
+  m.userData.age=0; m.userData.life=1.4+Math.random()*0.5;
+  m.visible=true;
+}
+function updateFoam(dt){
+  const spd=Math.hypot(s.u,s.v);
+  foamTimer-=dt;
+  if(foamTimer<=0 && spd>0.25){
+    foamTimer=Math.max(0.05,0.16-spd*0.02);
+    const sx=s.x-Math.cos(s.psi)*P.L/2, sz=s.y-Math.sin(s.psi)*P.L/2;
+    spawnFoam(sx,sz,0.5+Math.min(1.2,spd*0.35));
+  }
+  for(const m of foamPool){
+    if(!m.visible) continue;
+    m.userData.age+=dt;
+    const k=m.userData.age/m.userData.life;
+    if(k>=1){m.visible=false;continue;}
+    m.material.opacity=(1-k)*0.55;
+    m.scale.multiplyScalar(1+dt*0.9);
+  }
+}
+let worldGroup=null, boatGroup=null, boatInner=null, rudderMesh=null;
+let cleatMeshes=[], cleatHits=[], bollardMeshes=[], bollardHits=[], berthLine=null, berthMat=null;
+let lineObjs=[]; // {line:THREE.Line, knob:Mesh, geo}
+
+function hullMesh(L,B,colorHex,deckHex){
+  // Rumpf als extrudierte Form (Draufsicht), Bug +X
+  const hl=L/2,hw=B/2;
+  const sh=new THREE.Shape();
+  sh.moveTo(hl,0);
+  sh.quadraticCurveTo(hl*0.75,-hw,hl*0.2,-hw);
+  sh.lineTo(-hl,-hw); sh.lineTo(-hl,hw); sh.lineTo(hl*0.2,hw);
+  sh.quadraticCurveTo(hl*0.75,hw,hl,0);
+  const geo=new THREE.ExtrudeGeometry(sh,{depth:0.9,bevelEnabled:false});
+  geo.rotateX(-Math.PI/2); // Form lag in XY → jetzt XZ, Höhe Y
+  geo.translate(0,-0.35,0); // etwas eintauchen
+  const m=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:colorHex}));
+  const g=new THREE.Group(); g.add(m);
+  // Deckfläche
+  const deck=new THREE.Mesh(new THREE.BoxGeometry(L*0.94,0.06,B*0.86),
+    new THREE.MeshLambertMaterial({color:deckHex}));
+  deck.position.y=0.58; g.add(deck);
+  return g;
+}
+function buildOwnBoat(){
+  const g=new THREE.Group();
+  const inner=new THREE.Group(); g.add(inner);
+  const col=P.color, deck=P.deck;
+  if(P.twin){
+    const hw=P.B/2;
+    for(const side of [-1,1]){
+      const h=hullMesh(P.L,P.B*0.28,col,deck);
+      h.position.z=side*(hw-P.B*0.14);
+      inner.add(h);
+    }
+    const bridge=new THREE.Mesh(new THREE.BoxGeometry(P.L*0.6,0.35,P.B*0.8),
+      new THREE.MeshLambertMaterial({color:col}));
+    bridge.position.y=0.62; inner.add(bridge);
+    const cabin=new THREE.Mesh(new THREE.BoxGeometry(P.L*0.4,0.85,P.B*0.55),
+      new THREE.MeshLambertMaterial({color:deck}));
+    cabin.position.set(-P.L*0.05,1.2,0); inner.add(cabin);
+  } else {
+    inner.add(hullMesh(P.L,P.B,col,deck));
+    const cabin=new THREE.Mesh(new THREE.BoxGeometry(P.L*0.34,0.62,P.B*0.6),
+      new THREE.MeshLambertMaterial({color:deck}));
+    cabin.position.set(-P.L*0.06,0.92,0); inner.add(cabin);
+    if(cfg.boat==='sail'){
+      const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,9,8),
+        new THREE.MeshLambertMaterial({color:0xd8d2c2}));
+      mast.position.set(P.L*0.08,4.9,0); inner.add(mast);
+      const boom=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,P.L*0.42,8),
+        new THREE.MeshLambertMaterial({color:0xd8d2c2}));
+      boom.rotation.z=Math.PI/2; boom.position.set(-P.L*0.13,1.55,0); inner.add(boom);
+    }
+    if(cfg.boat==='sport'){
+      const shield=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.5,P.B*0.7),
+        new THREE.MeshPhongMaterial({color:0x9fd8e8,transparent:true,opacity:0.55}));
+      shield.position.set(P.L*0.16,1.0,0); shield.rotation.z=-0.35; inner.add(shield);
+    }
+    if(cfg.boat==='yacht'){
+      const fly=new THREE.Mesh(new THREE.BoxGeometry(P.L*0.26,0.5,P.B*0.5),
+        new THREE.MeshLambertMaterial({color:col}));
+      fly.position.set(-P.L*0.08,1.55,0); inner.add(fly);
+    }
+    // Ruderblatt
+    rudderMesh=new THREE.Group();
+    const blade=new THREE.Mesh(new THREE.BoxGeometry(P.L*0.14,0.7,0.08),
+      new THREE.MeshLambertMaterial({color:deck}));
+    blade.position.x=-P.L*0.07;
+    rudderMesh.add(blade);
+    rudderMesh.position.set(-P.L/2*0.98,-0.1,0);
+    inner.add(rudderMesh);
+  }
+  // Bug-Markierung
+  const bowDot=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8),
+    new THREE.MeshLambertMaterial({color:0xe0317f}));
+  bowDot.position.set(P.L/2*0.8,0.72,0); inner.add(bowDot);
+  // Positionslichter Bb rot / Stb grün
+  const pl=new THREE.Mesh(new THREE.SphereGeometry(0.11,8,6),new THREE.MeshLambertMaterial({color:0xff5a4d}));
+  pl.position.set(P.L*0.28,0.72,-P.B/2*0.8); inner.add(pl);
+  const sl=new THREE.Mesh(new THREE.SphereGeometry(0.11,8,6),new THREE.MeshLambertMaterial({color:0x4be08a}));
+  sl.position.set(P.L*0.28,0.72,P.B/2*0.8); inner.add(sl);
+  // Klampen (tippbar)
+  cleatMeshes=[]; cleatHits=[];
+  for(let i=0;i<cleats.length;i++){
+    const cm=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.22,10),
+      new THREE.MeshLambertMaterial({color:0x9fd8d2}));
+    cm.position.set(cleats[i].x,0.7,cleats[i].y);
+    inner.add(cm); cleatMeshes.push(cm);
+    const hit=new THREE.Mesh(new THREE.SphereGeometry(0.85,8,6),
+      new THREE.MeshBasicMaterial({transparent:true,opacity:0}));
+    hit.position.copy(cm.position); hit.userData={type:'cleat',idx:i};
+    inner.add(hit); cleatHits.push(hit);
+  }
+  return {group:g,inner};
+}
+function boxAt(o,mat,height,yTop){
+  const R=R2(o);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(R.r-R.l,height,R.b-R.t),mat);
+  m.position.set((R.l+R.r)/2, yTop-height/2, (R.t+R.b)/2);
+  return m;
+}
+function buildWorld(){
+  if(worldGroup){scene.remove(worldGroup);}
+  worldGroup=new THREE.Group();
+  bollardMeshes=[]; bollardHits=[];
+  for(const o of scene2.obstacles){
+    if(o.type==='pier'){
+      worldGroup.add(boxAt(o,mWood,1.6,0.7));
+      const edge=boxAt(o,mWoodDark,0.25,0.72);
+      edge.scale.x=1.02; worldGroup.add(edge);
+    } else if(o.type==='finger'){
+      worldGroup.add(boxAt(o,mWood,1.0,0.55));
+    } else if(o.type==='pile'){
+      const p=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.36,2.6,10),mPile);
+      p.position.set(o.x,0.9,o.y); worldGroup.add(p);
+    } else if(o.type==='moored'||o.type==='mooredH'){
+      const horiz=o.type==='mooredH';
+      const L=horiz?o.w:o.h, B=horiz?o.h:o.w;
+      const g=hullMesh(L,B,0x5d7682,0x40525c);
+      g.position.set(o.x,0.05,o.y);
+      g.rotation.y=horiz?0:-Math.PI/2;
+      worldGroup.add(g);
+    }
+  }
+  for(const b of scene2.bollards){
+    const bm=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,0.55,10),mBollard);
+    bm.position.set(b.x,0.95,b.y);
+    worldGroup.add(bm); bollardMeshes.push(bm);
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.24,0.1,10),
+      new THREE.MeshLambertMaterial({color:0x6b5232}));
+    cap.position.set(b.x,1.23,b.y); worldGroup.add(cap);
+    const hit=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,6),
+      new THREE.MeshBasicMaterial({transparent:true,opacity:0}));
+    hit.position.set(b.x,1.0,b.y); hit.userData={type:'bollard',bx:b.x,by:b.y};
+    worldGroup.add(hit); bollardHits.push(hit);
+  }
+  // Liegeplatz-Markierung
+  const b=scene2.berth;
+  const pts=[]; const corners=[[-b.hl,-b.hw],[b.hl,-b.hw],[b.hl,b.hw],[-b.hl,b.hw]];
+  const c=Math.cos(b.psi),si=Math.sin(b.psi);
+  for(const p of corners){
+    pts.push(new THREE.Vector3(b.x+p[0]*c-p[1]*si,0.12,b.y+p[0]*si+p[1]*c));
+  }
+  pts.push(pts[0].clone());
+  berthMat=new THREE.LineBasicMaterial({color:0xe0317f});
+  berthLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),berthMat);
+  worldGroup.add(berthLine);
+  scene.add(worldGroup);
+}
+function rebuildBoat(){
+  if(boatGroup) scene.remove(boatGroup);
+  rudderMesh=null;
+  const r=buildOwnBoat();
+  boatGroup=r.group; boatInner=r.inner;
+  scene.add(boatGroup);
+}
+function rebuildLineMeshes(){
+  for(const lo of lineObjs){scene.remove(lo.line);scene.remove(lo.knob);}
+  lineObjs=[];
+  for(let i=0;i<lines.length;i++){
+    const mat=new THREE.LineBasicMaterial({color:0xe1f2f6});
+    const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()]);
+    const line=new THREE.Line(geo,mat);
+    const knob=new THREE.Mesh(new THREE.SphereGeometry(0.28,10,8),
+      new THREE.MeshLambertMaterial({color:0xe1f2f6}));
+    knob.userData={type:'line',idx:i};
+    scene.add(line); scene.add(knob);
+    lineObjs.push({line,knob,mat});
+  }
+}
+function updateLineMeshes(){
+  for(let i=0;i<lineObjs.length;i++){
+    const L=lines[i], lo=lineObjs[i];
+    const p=cleatWorld(L.cleat);
+    const a=new THREE.Vector3(p[0],0.7,p[1]);
+    const bb=new THREE.Vector3(L.bx,1.15,L.by);
+    const slack=Math.max(0,L.restLen-(L.len||L.restLen));
+    const mid=a.clone().add(bb).multiplyScalar(0.5);
+    mid.y-=Math.min(1.0,slack*0.4);
+    lo.line.geometry.setFromPoints([a,mid,bb]);
+    const t=Math.min(1,(L.T||0)/LINE_BREAK);
+    const col=new THREE.Color();
+    if(t<0.5) col.setRGB(0.88+0.12*(t/0.5),0.95-0.19*(t/0.5),0.96-0.67*(t/0.5));
+    else col.setRGB(1,0.76-0.41*((t-0.5)/0.5),0.29+0.01*t);
+    lo.mat.color.copy(col);
+    lo.knob.material.color.copy(col);
+    lo.knob.position.copy(mid);
+    lo.knob.scale.setScalar(i===selLine?1.5:1);
+  }
+}
+
+// ---------- Kamera ----------
+let camMode='chase'; // 'chase' | 'top'
+let camYaw=0, camDist=15, freeTimer=0;
+document.getElementById('viewbtn').onclick=()=>{
+  camMode=camMode==='chase'?'top':'chase';
+  document.getElementById('viewbtn').textContent=camMode==='chase'?'⬒ Draufsicht':'▣ Verfolger';
+};
+function updateCamera(dt){
+  const bx=s.x, bz=s.y;
+  if(camMode==='top'){
+    camera.up.set(0,0,-1);
+    camera.position.set(bx,Math.max(26,camDist*2.2),bz);
+    camera.lookAt(bx,0,bz);
+    return;
+  }
+  camera.up.set(0,1,0);
+  freeTimer-=dt;
+  const target=s.psi+Math.PI;
+  if(freeTimer<=0){
+    let d=((target-camYaw+Math.PI*3)%(Math.PI*2))-Math.PI;
+    camYaw+=d*Math.min(1,dt*1.5);
+  }
+  const h=camDist*0.42+1.5;
+  camera.position.set(bx+Math.cos(camYaw)*camDist, h, bz+Math.sin(camYaw)*camDist);
+  camera.lookAt(bx,0.8,bz);
+}
+
+// ---------- Touch: Orbit, Pinch, Tap ----------
+const pointers=new Map();
+let tapStart=null, pinchD0=0, dist0=15;
+const ray=new THREE.Raycaster();
+renderer.domElement.addEventListener('pointerdown',e=>{
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size===1){tapStart={x:e.clientX,y:e.clientY,t:performance.now()};}
+  if(pointers.size===2){
+    const ps=[...pointers.values()];
+    pinchD0=Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y); dist0=camDist;
+    tapStart=null;
+  }
+  e.preventDefault();
+});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!pointers.has(e.pointerId))return;
+  const prev=pointers.get(e.pointerId);
+  const dx=e.clientX-prev.x, dy=e.clientY-prev.y;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size===1&&camMode==='chase'){
+    if(Math.abs(dx)>2||Math.abs(dy)>2){
+      camYaw-=dx*0.007; camDist=Math.max(7,Math.min(38,camDist+dy*0.05));
+      freeTimer=2.5;
+      if(tapStart&&Math.hypot(e.clientX-tapStart.x,e.clientY-tapStart.y)>12) tapStart=null;
+    }
+  } else if(pointers.size===2){
+    const ps=[...pointers.values()];
+    const d=Math.hypot(ps[0].x-ps[1].x,ps[0].y-ps[1].y);
+    if(pinchD0>0) camDist=Math.max(7,Math.min(38,dist0*pinchD0/Math.max(20,d)));
+    freeTimer=2.5;
+  }
+});
+function pointerEnd(e){
+  pointers.delete(e.pointerId);
+  if(tapStart&&pointers.size===0){
+    const dt=performance.now()-tapStart.t;
+    const moved=Math.hypot(e.clientX-tapStart.x,e.clientY-tapStart.y);
+    if(dt<400&&moved<12) handleTap(e.clientX,e.clientY);
+    tapStart=null;
+  }
+}
+renderer.domElement.addEventListener('pointerup',pointerEnd);
+renderer.domElement.addEventListener('pointercancel',pointerEnd);
+
+function handleTap(cx,cy){
+  const rc=renderer.domElement.getBoundingClientRect();
+  const m=new THREE.Vector2(((cx-rc.left)/rc.width)*2-1, -((cy-rc.top)/rc.height)*2+1);
+  ray.setFromCamera(m,camera);
+  const knobs=lineObjs.map(l=>l.knob);
+  const hits=ray.intersectObjects([...cleatHits,...bollardHits,...knobs],false);
+  if(hits.length){
+    const ud=hits[0].object.userData;
+    if(ud.type==='cleat'){
+      selCleat=(selCleat===ud.idx?-1:ud.idx); selLine=-1; winching=false; updatePill();
+      if(selCleat>=0) setStatus(cleats[ud.idx].n+' gewählt – jetzt Poller antippen','');
+      return;
+    }
+    if(ud.type==='bollard'){
+      if(selCleat<0){setStatus('Zuerst eine Klampe am Boot antippen','amber');return;}
+      const p=cleatWorld(selCleat);
+      const d=Math.hypot(ud.bx-p[0],ud.by-p[1]);
+      if(d>LINE_MAXLEN){setStatus('Zu weit für eine Leine – näher ran','amber');return;}
+      if(Math.hypot(s.u,s.v)>1.2){setStatus('Zu schnell zum Leinenwerfen','amber');return;}
+      if(lines.some(l=>l.cleat===selCleat&&l.bx===ud.bx&&l.by===ud.by)){selCleat=-1;return;}
+      lines.push({cleat:selCleat,bx:ud.bx,by:ud.by,restLen:Math.max(1.2,d),T:0,len:d});
+      rebuildLineMeshes();
+      setStatus('Leine belegt: '+cleats[selCleat].n,'');
+      selCleat=-1;
+      return;
+    }
+    if(ud.type==='line'){
+      selLine=(selLine===ud.idx?-1:ud.idx); selCleat=-1; winching=false; updatePill();
+      return;
+    }
+  }
+  selCleat=-1; selLine=-1; winching=false; updatePill();
+}
+document.getElementById('lp-drop').addEventListener('click',()=>{
+  if(selLine>=0&&lines[selLine]){lines.splice(selLine,1);rebuildLineMeshes();setStatus('Leine losgeworfen','');}
+  selLine=-1; winching=false; updatePill(); checkDockLatch();
+});
+{
+  const w=document.getElementById('lp-winch');
+  w.addEventListener('pointerdown',e=>{winching=true;e.preventDefault();w.setPointerCapture(e.pointerId);});
+  const off=()=>winching=false;
+  w.addEventListener('pointerup',off); w.addEventListener('pointercancel',off);
+}
+
+// ---------- HUD ----------
+function updateHUD(){
+  const sp=Math.hypot(s.u,s.v)*KN;
+  document.getElementById('r-sog').innerHTML=sp.toFixed(1)+'<small> kn</small>';
+  const cdeg=((Math.atan2(Math.sin(s.psi),Math.cos(s.psi))*180/Math.PI)+90+360)%360;
+  document.getElementById('r-hdg').textContent=String(Math.round(cdeg)).padStart(3,'0')+'°';
+  document.getElementById('r-rot').innerHTML=(s.r*180/Math.PI).toFixed(1)+'<small> °/s</small>';
+  document.getElementById('r-drift').innerHTML=(Math.abs(s.v)*KN).toFixed(1)+'<small> kn</small>';
+  let ws=cfg.windSpeed*(cfg.shelter?0.35:1)*(1+gust);
+  document.getElementById('r-wind').textContent=(ws*KN).toFixed(0)+' kn';
+  document.getElementById('windbadge').classList.toggle('shelter',cfg.shelter);
+  document.getElementById('wind-g').setAttribute('transform','rotate('+(cfg.windDir+180)+' 15 15)');
+  stage.classList.toggle('haslines',selLine>=0);
+}
+function setStatus(t,cls){
+  const el=document.getElementById('status');
+  el.className='hbox'; if(cls) el.classList.add(cls);
+  el.querySelector('.val').textContent=t;
+}
+function updatePill(){
+  document.getElementById('linepill').style.display=selLine>=0?'flex':'none';
+}
+
+// ================= SOUND (wie 2D-Version) =================
+const sfx=(function(){
+  let ac=null, on=false;
+  let master, engGain, engOsc, engOsc2, engNoiseGain, engFilter, windGain, windFilter, noiseBuf;
+  function makeNoise(){
+    const len=ac.sampleRate*2, b=ac.createBuffer(1,len,ac.sampleRate), d=b.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    return b;
+  }
+  function build(){
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    master=ac.createGain(); master.gain.value=0.9; master.connect(ac.destination);
+    noiseBuf=makeNoise();
+    engOsc=ac.createOscillator(); engOsc.type='triangle'; engOsc.frequency.value=45;
+    engOsc2=ac.createOscillator(); engOsc2.type='sawtooth'; engOsc2.frequency.value=91;
+    const o2g=ac.createGain(); o2g.gain.value=0.25;
+    engGain=ac.createGain(); engGain.gain.value=0;
+    engOsc.connect(engGain); engOsc2.connect(o2g); o2g.connect(engGain);
+    const eN=ac.createBufferSource(); eN.buffer=noiseBuf; eN.loop=true;
+    engFilter=ac.createBiquadFilter(); engFilter.type='lowpass'; engFilter.frequency.value=300;
+    engNoiseGain=ac.createGain(); engNoiseGain.gain.value=0;
+    eN.connect(engFilter); engFilter.connect(engNoiseGain); engNoiseGain.connect(master);
+    engGain.connect(master);
+    engOsc.start(); engOsc2.start(); eN.start();
+    const wN=ac.createBufferSource(); wN.buffer=noiseBuf; wN.loop=true;
+    windFilter=ac.createBiquadFilter(); windFilter.type='bandpass'; windFilter.frequency.value=480; windFilter.Q.value=0.6;
+    windGain=ac.createGain(); windGain.gain.value=0;
+    wN.connect(windFilter); windFilter.connect(windGain); windGain.connect(master);
+    wN.start();
+  }
+  function toggle(){
+    if(!ac) build();
+    if(ac.state==='suspended') ac.resume();
+    on=!on;
+    if(!on){engGain.gain.value=0;engNoiseGain.gain.value=0;windGain.gain.value=0;}
+    return on;
+  }
+  function update(engLevel,windMS){
+    if(!on||!ac) return;
+    const t=ac.currentTime, e=Math.min(1,Math.abs(engLevel));
+    const f=45+e*70;
+    engOsc.frequency.setTargetAtTime(f,t,0.08);
+    engOsc2.frequency.setTargetAtTime(f*2.03,t,0.08);
+    engGain.gain.setTargetAtTime(e>0.02?0.05+e*0.14:0,t,0.1);
+    engFilter.frequency.setTargetAtTime(250+e*900,t,0.1);
+    engNoiseGain.gain.setTargetAtTime(e>0.02?e*0.10:0,t,0.12);
+    const w=Math.min(1,windMS/14);
+    windGain.gain.setTargetAtTime(w*0.13*(0.85+0.15*Math.sin(t*0.7)),t,0.25);
+    windFilter.frequency.setTargetAtTime(380+w*450,t,0.3);
+  }
+  function burst(dur,filterType,freq,gain){
+    const src=ac.createBufferSource(); src.buffer=noiseBuf;
+    const fl=ac.createBiquadFilter(); fl.type=filterType; fl.frequency.value=freq;
+    const g=ac.createGain(); g.gain.setValueAtTime(gain,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
+    src.connect(fl); fl.connect(g); g.connect(master);
+    src.start(); src.stop(ac.currentTime+dur);
+  }
+  function tone(freq,dur,gain,when){
+    const osc=ac.createOscillator(); osc.type='sine'; osc.frequency.value=freq;
+    const g=ac.createGain(); const t0=ac.currentTime+(when||0);
+    g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(gain,t0+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+    osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0+dur+0.05);
+  }
+  return {
+    toggle, update,
+    impact(spd){ if(!on||!ac)return; const k=Math.min(1,spd/3);
+      burst(0.22,'lowpass',180,0.5*k); tone(52,0.3,0.35*k); },
+    snap(){ if(!on||!ac)return; burst(0.07,'highpass',1800,0.6); tone(220,0.12,0.2); },
+    dock(){ if(!on||!ac)return; tone(660,0.25,0.22); tone(880,0.35,0.22,0.18); },
+  };
+})();
+{
+  const b=document.getElementById('snd');
+  b.onclick=()=>{ const on=sfx.toggle(); b.textContent=on?'🔊':'🔇'; b.classList.toggle('off',!on); };
+}
+
+// ---------- Loop ----------
+let last=performance.now(), acc=0, simT=0;
+function frame(now){
+  let dt=(now-last)/1000; last=now; if(dt>0.1)dt=0.1; acc+=dt; simT+=dt;
+  gustT-=dt;
+  if(gustT<=0){gustT=1.5+Math.random()*3; gustTarget=cfg.shelter?(Math.random()*0.8-0.1):(Math.random()*0.4-0.2);}
+  gust+=(gustTarget-gust)*Math.min(1,dt*1.2);
+  const step=1/120;
+  while(acc>=step){physics(step);acc-=step;}
+  checkDock();
+  // Boot-Pose
+  boatGroup.position.set(s.x, 0.05+Math.sin(simT*1.25)*0.045, s.y);
+  boatGroup.rotation.y=-s.psi;
+  const roll=Math.max(-0.06,Math.min(0.06,-s.v*0.05));
+  boatInner.rotation.x=roll;
+  boatInner.rotation.z=Math.max(-0.04,Math.min(0.04,-s.u*0.008));
+  if(rudderMesh) rudderMesh.rotation.y=-ctrl.rudder*0.61;
+  // Klampen-Highlight
+  for(let i=0;i<cleatMeshes.length;i++){
+    cleatMeshes[i].scale.setScalar(i===selCleat?1.9:1);
+    cleatMeshes[i].material.color.setHex(i===selCleat?0xe0317f:0x9fd8d2);
+  }
+  const hot=selCleat>=0;
+  for(const bm of bollardMeshes) bm.material=hot?mBollardHot:mBollard;
+  // Liegeplatz-Farbe
+  if(berthMat){
+    if(docked) berthMat.color.setHex(0x4be08a);
+    else {const p=0.6+0.4*Math.sin(performance.now()/400); berthMat.color.setRGB(0.88*p,0.19*p,0.5*p);}
+  }
+  updateLineMeshes();
+  updateFoam(dt);
+  animateWater(simT);
+  updateCamera(dt);
+  const engLvl=P.twin?Math.max(Math.abs(eng.l),Math.abs(eng.r)):Math.abs(eng.l);
+  sfx.update(engLvl, cfg.windSpeed*(cfg.shelter?0.35:1)*(1+gust));
+  updateHUD();
+  renderer.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+const mBollardHot=new THREE.MeshLambertMaterial({color:0x74e6da});
+
+// ================= UI-CONTROLS (wie 2D) =================
+function setThrottle(side,val){
+  val=Math.max(-1,Math.min(1,val));
+  if(Math.abs(val)<0.05) val=0;
+  if(side==='l')ctrl.thrL=val; else ctrl.thrR=val;
+  const knob=document.getElementById('knob-'+side), fill=document.getElementById('fill-'+side),
+        pct=document.getElementById('pct-'+side), track=document.getElementById('thr-'+(side==='l'?'left':'right'));
+  if(!track||track.style.display==='none')return;
+  const h=track.clientHeight,pad=5,usable=h-2*pad-44;
+  const top=pad+(-val+1)*(usable/2);
+  knob.style.top=top+'px';
+  pct.textContent=(val>0?'+':'')+Math.round(val*100);
+  const cy=h/2, kc=top+22;
+  if(val>=0){fill.style.top=kc+'px';fill.style.height=Math.max(0,cy-kc)+'px';}
+  else{fill.style.top=cy+'px';fill.style.height=Math.max(0,kc-cy)+'px';}
+}
+function setRudder(val){
+  val=Math.max(-1,Math.min(1,val)); ctrl.rudder=val;
+  const g=document.getElementById('wheel-g');
+  if(g) g.setAttribute('transform','rotate('+(val*135)+' 60 60)');
+  document.getElementById('rud-deg').textContent=
+    (val>0?'Stb ':val<0?'Bb ':'')+Math.abs(Math.round(val*35))+'°';
+}
+function bindThrottle(side){
+  const track=document.getElementById('thr-'+(side==='l'?'left':'right'));
+  let active=false;
+  function val(e){
+    const rc=track.getBoundingClientRect(),pad=5,usable=rc.height-2*pad-44;
+    return Math.max(-1,Math.min(1,-(e.clientY-(rc.top+rc.height/2))/(usable/2)));
+  }
+  track.addEventListener('pointerdown',e=>{active=true;track.setPointerCapture(e.pointerId);setThrottle(side,val(e));e.preventDefault();});
+  track.addEventListener('pointermove',e=>{if(active)setThrottle(side,val(e));});
+  const up=()=>active=false;
+  track.addEventListener('pointerup',up); track.addEventListener('pointercancel',up);
+}
+function bindRudder(){
+  const box=document.getElementById('wheelbox');
+  let active=false, lastTap=0, a0=0, r0=0;
+  function ang(e){const rc=box.getBoundingClientRect();
+    return Math.atan2(e.clientY-(rc.top+rc.height/2), e.clientX-(rc.left+rc.width/2));}
+  box.addEventListener('pointerdown',e=>{
+    const now=performance.now();
+    if(now-lastTap<300){setRudder(0);lastTap=0;return;}
+    lastTap=now;
+    active=true; box.setPointerCapture(e.pointerId);
+    a0=ang(e); r0=ctrl.rudder; e.preventDefault();
+  });
+  box.addEventListener('pointermove',e=>{
+    if(!active)return;
+    let d=ang(e)-a0;
+    while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI;
+    setRudder(r0 + (d*180/Math.PI)/135);
+  });
+  const up=()=>{active=false;};
+  box.addEventListener('pointerup',up); box.addEventListener('pointercancel',up);
+}
+function bindBow(){
+  const press=(el,v)=>{
+    el.addEventListener('pointerdown',e=>{ctrl.bow=v;el.classList.add('on');e.preventDefault();el.setPointerCapture(e.pointerId);});
+    const off=()=>{ctrl.bow=0;el.classList.remove('on');};
+    el.addEventListener('pointerup',off);el.addEventListener('pointercancel',off);el.addEventListener('pointerleave',off);
+  };
+  press(document.getElementById('bow-l'),-1); press(document.getElementById('bow-r'),1);
+}
+function layoutControls(){
+  stage.classList.toggle('cat',P.twin);
+  document.getElementById('thr-right').style.display=P.twin?'block':'none';
+  document.getElementById('wheelbox').style.display=P.twin?'none':'block';
+  document.getElementById('bow').style.display=P.bowThruster?'flex':'none';
+  document.getElementById('thrname-l').textContent=P.twin?'Bb':'Maschine';
+  document.getElementById('thr-left').style.bottom=P.twin?'14px':'74px';
+  document.getElementById('thr-right').style.bottom='14px';
+  setTimeout(()=>{setThrottle('l',ctrl.thrL);if(P.twin)setThrottle('r',ctrl.thrR);setRudder(ctrl.rudder);},0);
+}
+const keys={};
+addEventListener('keydown',e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
+  keys[e.key.toLowerCase()]=true;
+  if(e.key==='r'||e.key==='R')reset();
+  if(e.key===' '){setThrottle('l',0);setThrottle('r',0);}
+});
+addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+setInterval(()=>{
+  const d=0.04;
+  if(keys['arrowup'])setThrottle('l',ctrl.thrL+d); if(keys['arrowdown'])setThrottle('l',ctrl.thrL-d);
+  if(P.twin){if(keys['w'])setThrottle('r',ctrl.thrR+d); if(keys['s'])setThrottle('r',ctrl.thrR-d);}
+  if(keys['arrowleft'])setRudder(ctrl.rudder-0.07); if(keys['arrowright'])setRudder(ctrl.rudder+0.07);
+  if(P.bowThruster)ctrl.bow=(keys['q']?-1:0)+(keys['e']?1:0);
+},50);
+
+// ================= SETTINGS =================
+const settings=document.getElementById('settings');
+document.getElementById('gear').onclick=()=>{settings.classList.add('open');drawDial();};
+document.getElementById('s-close').onclick=()=>settings.classList.remove('open');
+document.getElementById('s-start').onclick=()=>{settings.classList.remove('open');reset();};
+document.getElementById('resetbtn').onclick=()=>reset();
+function selChips(id,key,after){
+  const box=document.getElementById(id);
+  box.querySelectorAll('.chip').forEach(ch=>{
+    ch.onclick=()=>{box.querySelectorAll('.chip').forEach(c=>c.classList.remove('sel'));
+      ch.classList.add('sel'); cfg[key]=ch.dataset[key]; if(after)after();};
+  });
+}
+selChips('boatchips','boat');
+selChips('scenchips','scen',()=>{
+  if(cfg.scen==='tight'){
+    cfg.windSpeed=8; cfg.windDir=90; cfg.shelter=false; cfg.curOn=true; cfg.curSpeed=0.7; cfg.curDir=0;
+    syncSettingsUI();
+  }
+});
+function markSel(){
+  document.querySelector('#boatchips .chip[data-boat="'+cfg.boat+'"]').classList.add('sel');
+  document.querySelector('#scenchips .chip[data-scen="'+cfg.scen+'"]').classList.add('sel');
+}
+const wspeed=document.getElementById('windspeed'),wdir=document.getElementById('winddir');
+const cspeed=document.getElementById('curspeed'),cdir=document.getElementById('curdir');
+wspeed.oninput=()=>{cfg.windSpeed=+wspeed.value;syncSettingsUI();};
+wdir.oninput=()=>{cfg.windDir=+wdir.value;syncSettingsUI();};
+cspeed.oninput=()=>{cfg.curSpeed=+cspeed.value;syncSettingsUI();};
+cdir.oninput=()=>{cfg.curDir=+cdir.value;syncSettingsUI();};
+const shelterT=document.getElementById('shelter');
+shelterT.onclick=()=>{cfg.shelter=!cfg.shelter;shelterT.classList.toggle('on',cfg.shelter);};
+const curT=document.getElementById('curtoggle');
+curT.onclick=()=>{cfg.curOn=!cfg.curOn;curT.classList.toggle('on',cfg.curOn);};
+function compassName(d){const n=['N','NO','O','SO','S','SW','W','NW'];return n[Math.round(d/45)%8];}
+function syncSettingsUI(){
+  wspeed.value=cfg.windSpeed; wdir.value=cfg.windDir;
+  cspeed.value=cfg.curSpeed; cdir.value=cfg.curDir;
+  document.getElementById('windspeed-v').textContent=cfg.windSpeed.toFixed(1)+' m/s';
+  document.getElementById('winddir-v').textContent=cfg.windDir+'°';
+  document.getElementById('curspeed-v').textContent=cfg.curSpeed.toFixed(2)+' m/s';
+  document.getElementById('curdir-v').textContent=cfg.curDir+'° ('+compassName(cfg.curDir)+')';
+  shelterT.classList.toggle('on',cfg.shelter);
+  curT.classList.toggle('on',cfg.curOn);
+  drawDial();
+}
+const dial=document.getElementById('dialpad'),dctx=dial.getContext('2d');
+function drawDial(){
+  const cx=52,cy=52,R=40;
+  dctx.clearRect(0,0,104,104);
+  dctx.fillStyle='#0f2731';dctx.beginPath();dctx.arc(cx,cy,R+6,0,7);dctx.fill();
+  dctx.strokeStyle='#1d4150';dctx.lineWidth=1;dctx.beginPath();dctx.arc(cx,cy,R+6,0,7);dctx.stroke();
+  ['N','O','S','W'].forEach((c,i)=>{const a=i*Math.PI/2-Math.PI/2;
+    dctx.fillStyle='#7f99a4';dctx.font='10px sans-serif';dctx.textAlign='center';dctx.textBaseline='middle';
+    dctx.fillText(c,cx+Math.cos(a)*(R-3),cy+Math.sin(a)*(R-3));});
+  const a=(cfg.windDir-90)*Math.PI/180;
+  const fx=cx+Math.cos(a)*R*0.7, fy=cy+Math.sin(a)*R*0.7;
+  const tx=cx-Math.cos(a)*R*0.55, ty=cy-Math.sin(a)*R*0.55;
+  dctx.strokeStyle='#74e6da';dctx.lineWidth=3;dctx.lineCap='round';
+  dctx.beginPath();dctx.moveTo(fx,fy);dctx.lineTo(tx,ty);dctx.stroke();
+  const ah=Math.atan2(ty-fy,tx-fx);
+  dctx.beginPath();dctx.moveTo(tx,ty);
+  dctx.lineTo(tx-Math.cos(ah-0.5)*8,ty-Math.sin(ah-0.5)*8);
+  dctx.lineTo(tx-Math.cos(ah+0.5)*8,ty-Math.sin(ah+0.5)*8);dctx.closePath();dctx.fillStyle='#74e6da';dctx.fill();
+  dctx.beginPath();dctx.arc(fx,fy,3,0,7);dctx.fill();
+}
+function dialPick(e){
+  const rc=dial.getBoundingClientRect();
+  const dx=e.clientX-rc.left-52, dy=e.clientY-rc.top-52;
+  let deg=Math.atan2(dy,dx)*180/Math.PI+90; deg=((Math.round(deg)%360)+360)%360;
+  cfg.windDir=deg; syncSettingsUI();
+}
+let dialActive=false;
+dial.addEventListener('pointerdown',e=>{dialActive=true;dial.setPointerCapture(e.pointerId);dialPick(e);e.preventDefault();});
+dial.addEventListener('pointermove',e=>{if(dialActive)dialPick(e);});
+dial.addEventListener('pointerup',()=>dialActive=false);
+
+// ---------- Reset & Init ----------
+function reset(){
+  P=BOATS[cfg.boat];
+  buildScene(); makeCleats();
+  s={x:scene2.start.x,y:scene2.start.y,psi:scene2.start.psi,u:0,v:0,r:0};
+  ctrl={thrL:0,thrR:0,rudder:0,bow:0}; eng={l:0,r:0};
+  lines=[]; selCleat=-1; selLine=-1; winching=false;
+  setThrottle('l',0); setThrottle('r',0); setRudder(0);
+  docked=false; impactCool=0;
+  buildWorld(); rebuildBoat(); rebuildLineMeshes(); updatePill();
+  camYaw=s.psi+Math.PI; camDist=15; freeTimer=0;
+  setStatus('Bereit – manövriere zum Liegeplatz','');
+  layoutControls();
+}
+function init(){
+  resize(); initFoam(); markSel(); syncSettingsUI();
+  bindThrottle('l'); bindThrottle('r'); bindRudder(); bindBow();
+  reset();
+  document.getElementById('loading').style.display='none';
+  requestAnimationFrame(frame);
+}
+init();
+})();
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
